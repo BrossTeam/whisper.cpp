@@ -51,7 +51,7 @@ struct whisper_params {
     bool no_timestamps = false;
 
     std::string language  = "en";
-    std::string model     = "models/ggml-base.en.bin";
+    std::string model     = "C:/Users/tyler/Videos/Whisper/models/ggml-base.en.bin";
     std::string fname_out;
 };
 
@@ -425,10 +425,11 @@ int main(int argc, char ** argv) {
 
     params.keep_ms   = std::min(params.keep_ms,   params.step_ms);
     params.length_ms = std::max(params.length_ms, params.step_ms);
-
-    const int n_samples_step = (params.step_ms  *1e-3)*WHISPER_SAMPLE_RATE;
-    const int n_samples_len  = (params.length_ms*1e-3)*WHISPER_SAMPLE_RATE;
-    const int n_samples_keep = (params.keep_ms  *1e-3)*WHISPER_SAMPLE_RATE;
+    
+    //1e-3 is equivalent to 1 * 10^(-3) = 0.001, which is a decimal representation of 1/1000 or 0.001
+    const int n_samples_step = (params.step_ms  *1e-3)*WHISPER_SAMPLE_RATE; //calculates the number of samples in a step based on the "step_ms" parameter and sample rate. The number of samples is used for processing the audio data in steps, the algorithm will process the audio data by taking the audio in steps of n_samples_step.
+    const int n_samples_len  = (params.length_ms*1e-3)*WHISPER_SAMPLE_RATE; //Length of the recording in milliseconds (length_ms). Gets the number of samples and stores it in n_samples_len.
+    const int n_samples_keep = (params.keep_ms  *1e-3)*WHISPER_SAMPLE_RATE; //Number of samples that need to be kept based on the "keep_ms" parameter and sample rate. Stored in n_samples_keep. This number of samples is used for some processing later in the code, for example for maintaining a certain number of seconds of audio data.
     const int n_samples_30s  = (30000           *1e-3)*WHISPER_SAMPLE_RATE;
 
     const bool use_vad = n_samples_step <= 0; // sliding window mode uses VAD
