@@ -192,7 +192,7 @@ add_library(${TARGET}
     ggml.c
     whisper.h
     whisper.cpp
-    )
+     )
 
 include(DefaultTargetOptions)
 
