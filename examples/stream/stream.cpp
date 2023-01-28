@@ -7,6 +7,7 @@
 
 #include <SDL.h>
 #include <SDL_audio.h>
+#include "boost/circular_buffer.hpp"
 
 #include <atomic>
 #include <cassert>
@@ -89,9 +90,9 @@ private:
     std::atomic_bool m_running;
     std::mutex       m_mutex;
 
-    std::vector<float> m_audio;
+    //std::vector<float> m_audio;
     std::vector<float> m_audio_new;
-    std::queue<float> m_audio_queue;
+    boost::circular_buffer<float> m_audio_buffer;
     size_t             m_audio_pos = 0;
     size_t             m_audio_len = 0;
 };
@@ -167,8 +168,9 @@ bool audio_async::init(int capture_id, int sample_rate) {
 
     m_sample_rate = capture_spec_obtained.freq;
 
-    m_audio.resize((m_sample_rate*m_len_ms)/1000);
+    //m_audio.resize((m_sample_rate*m_len_ms)/1000);
 
+    m_audio_buffer.resize((m_sample_rate * m_len_ms) / 1000);
     return true;
 }
 
@@ -237,29 +239,16 @@ void audio_async::callback(uint8_t * stream, int len) {
 
     const size_t n_samples = len / sizeof(float);
 
-    m_audio_new.resize(n_samples);
-    memcpy(m_audio_new.data(), stream, n_samples * sizeof(float));
-    //m_audio_queue.push()
+    std::lock_guard<std::mutex> lock(m_mutex);
 
-    //fprintf(stderr, "%s: %zu samples, pos %zu, len %zu\n", __func__, n_samples, m_audio_pos, m_audio_len);
+    // Check if there is enough space in the buffer
+    if (n_samples > m_audio_buffer.capacity()) {
+        m_audio_buffer.set_capacity(n_samples);
+    }
 
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-
-        if (m_audio_pos + n_samples > m_audio.size()) {
-            const size_t n0 = m_audio.size() - m_audio_pos;
-
-            memcpy(&m_audio[m_audio_pos], stream, n0 * sizeof(float));
-            memcpy(&m_audio[0], &stream[n0], (n_samples - n0) * sizeof(float));
-
-            m_audio_pos = (m_audio_pos + n_samples) % m_audio.size();
-            m_audio_len = m_audio.size();
-        } else {
-            memcpy(&m_audio[m_audio_pos], stream, n_samples * sizeof(float));
-
-            m_audio_pos = (m_audio_pos + n_samples) % m_audio.size();
-            m_audio_len = std::min(m_audio_len + n_samples, m_audio.size());
-        }
+    // Push new audio data to the buffer
+    for (size_t i = 0; i < n_samples; i++) {
+        m_audio_buffer.push_back(*(reinterpret_cast<float*>(&stream[i * sizeof(float)])));
     }
 }
 
@@ -284,24 +273,13 @@ void audio_async::get(int ms, std::vector<float> & result) {
         }
 
         size_t n_samples = (m_sample_rate * ms) / 1000;
-        if (n_samples > m_audio_len) {
-            n_samples = m_audio_len;
-        }
 
         result.resize(n_samples);
 
-        int s0 = m_audio_pos - n_samples;
-        if (s0 < 0) {
-            s0 += m_audio.size();
-        }
-
-        if (s0 + n_samples > m_audio.size()) {
-            const size_t n0 = m_audio.size() - s0;
-
-            memcpy(result.data(), &m_audio[s0], n0 * sizeof(float));
-            memcpy(&result[n0], &m_audio[0], (n_samples - n0) * sizeof(float));
+        if (n_samples > m_audio_buffer.size()) {
+            printf("critical error the audio requested was higher then the recorded buffer size");
         } else {
-            memcpy(result.data(), &m_audio[s0], n_samples * sizeof(float));
+            result.assign(m_audio_buffer.end() - n_samples, m_audio_buffer.end());
         }
     }
 }
@@ -321,6 +299,7 @@ void high_pass_filter(std::vector<float> & data, float cutoff, float sample_rate
     }
 }
 
+// TODO: improve VAD algorithm
 bool vad_simple(std::vector<float> & pcmf32, int sample_rate, int last_ms, float vad_thold, float freq_thold, bool verbose) {
     const int n_samples      = pcmf32.size();
     const int n_samples_last = (sample_rate * last_ms) / 1000;
@@ -463,16 +442,11 @@ int main() {
         const auto t_now = std::chrono::high_resolution_clock::now();
         const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
-        if (t_diff < 2000) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-            continue;
-        }
-
         audio.get(2000, pcmf32_new);
 
         if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
             audio.get(params.length_ms, pcmf32);
+            printf("got audio");
         }
         else {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -484,20 +458,21 @@ int main() {
 
         // run the inference
         {
+
             whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
             wparams.print_progress = false;
             wparams.print_realtime = false;
             wparams.print_special = false;
             wparams.print_timestamps = false;
-            wparams.translate        = params.translate;
-            wparams.no_context       = true;
-            wparams.single_segment   = true;
-            wparams.max_tokens       = params.max_tokens;
-            wparams.language         = params.language.c_str();
-            wparams.n_threads        = params.n_threads;
+            wparams.translate = false;
+            wparams.no_context = true;
+            wparams.single_segment = true;
+            wparams.max_tokens = params.max_tokens;
+            wparams.language = params.language.c_str();
+            wparams.n_threads = params.n_threads;
 
-            wparams.audio_ctx        = params.audio_ctx;
-            wparams.speed_up         = params.speed_up;
+            wparams.audio_ctx = params.audio_ctx;
+            wparams.speed_up = params.speed_up;
 
             // disable temperature fallback
             wparams.temperature_inc  = -1.0f;
@@ -513,6 +488,7 @@ int main() {
             // print result;
             {
                 const int n_segments = whisper_full_n_segments(ctx);
+                printf("found segments: " + n_segments);
                 for (int i = 0; i < n_segments; ++i) {
                     const char * text = whisper_full_get_segment_text(ctx, i);
                     printf("%s", text);
