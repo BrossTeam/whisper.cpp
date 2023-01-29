@@ -438,27 +438,21 @@ int main() {
         }
 
         // process new audio
-        
-        const auto t_now = std::chrono::high_resolution_clock::now();
-        const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
         audio.get(2000, pcmf32_new);
-
+        printf("process vad\n");
         if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
             audio.get(params.length_ms, pcmf32);
-            printf("got audio");
+            printf("found vad\n");
         }
         else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
             continue;
         }
 
-        t_last = t_now;
-
         // run the inference
         {
-
             whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
             wparams.print_progress = false;
             wparams.print_realtime = false;
@@ -488,10 +482,11 @@ int main() {
             // print result;
             {
                 const int n_segments = whisper_full_n_segments(ctx);
-                printf("found segments: " + n_segments);
+                //printf("\nfound segments: " + n_segments);
                 for (int i = 0; i < n_segments; ++i) {
                     const char * text = whisper_full_get_segment_text(ctx, i);
-                    printf("%s", text);
+                    //printf("%s", text);
+                    printf(text);
                     fflush(stdout);
 
                     if (params.fname_out.length() > 0) {
@@ -503,7 +498,7 @@ int main() {
                     fout << std::endl;
                 }
             }
-
+            /*
             ++n_iter;
 
             if ((n_iter % n_new_line) == 0) {
@@ -525,6 +520,7 @@ int main() {
                     }
                 }
             }
+            */
         }
     }
 
