@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 #include <fstream>
+#include <iostream>
 #include <mutex>
 #include <queue>
 #undef main
@@ -409,8 +410,11 @@ int main() {
     printf("[Start speaking]");
     fflush(stdout);
 
-          auto t_last  = std::chrono::high_resolution_clock::now();
-    const auto t_start = t_last;
+	auto t_last  = std::chrono::high_resolution_clock::now();
+    auto segment_iterator = 0;
+    auto full_text = "";
+    std::string temp_text = "";
+    //const auto t_start = t_last;
 
     // main audio loop
     while (is_running) {
@@ -438,16 +442,35 @@ int main() {
         }
 
         // process new audio
+        const auto t_now = std::chrono::high_resolution_clock::now();
+        const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
-        audio.get(2000, pcmf32_new);
+        if (t_diff < 1000) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        audio.get(1000, pcmf32_new);
         printf("process vad\n");
-        if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 1000, params.vad_thold, params.freq_thold, false)) {
+        if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 400, params.vad_thold, params.freq_thold, false)) {
+            t_last = std::chrono::high_resolution_clock::now();
+            segment_iterator += 1;
+            if (segment_iterator > 5)
+            {
+                printf("itterator reached 10 sec\n");
+            }
             audio.get(params.length_ms, pcmf32);
             printf("found vad\n");
         }
         else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
+            if (segment_iterator > 0)
+            {
+                printf("next iter\n");
+                std::cout << temp_text;
+                temp_text = "";
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            segment_iterator = 0;
             continue;
         }
 
@@ -486,7 +509,8 @@ int main() {
                 for (int i = 0; i < n_segments; ++i) {
                     const char * text = whisper_full_get_segment_text(ctx, i);
                     //printf("%s", text);
-                    printf(text);
+                    //printf(text);
+                    temp_text = text;
                     fflush(stdout);
 
                     if (params.fname_out.length() > 0) {
