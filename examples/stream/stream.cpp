@@ -17,6 +17,7 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <mutex>
 #include <queue>
 #undef main
@@ -278,10 +279,10 @@ void audio_async::get(int ms, std::vector<float> & result) {
         result.resize(n_samples);
 
         if (n_samples > m_audio_buffer.size()) {
-            printf("critical error the audio requested was higher then the recorded buffer size");
-        } else {
-            result.assign(m_audio_buffer.end() - n_samples, m_audio_buffer.end());
+            n_samples = m_audio_buffer.size();
+            //printf("critical error the audio requested was higher then the recorded buffer size");
         }
+        result.assign(m_audio_buffer.end() - n_samples, m_audio_buffer.end());
     }
 }
 
@@ -356,6 +357,7 @@ int main() {
     params.max_tokens     = 0;
 
     // init audio
+    std::map<char*, float>  audio_tokens;
 
     audio_async audio(params.length_ms);
     if (!audio.init(params.capture_id, WHISPER_SAMPLE_RATE)) {
@@ -414,6 +416,7 @@ int main() {
     auto segment_iterator = 0;
     auto full_text = "";
     std::string temp_text = "";
+    bool found_audio = false;
     //const auto t_start = t_last;
 
     // main audio loop
@@ -445,33 +448,33 @@ int main() {
         const auto t_now = std::chrono::high_resolution_clock::now();
         const auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(t_now - t_last).count();
 
-        if (t_diff < 1000) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            continue;
-        }
-
         audio.get(1000, pcmf32_new);
-        printf("process vad\n");
-        if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 400, params.vad_thold, params.freq_thold, false)) {
+        if (vad_simple(pcmf32_new, WHISPER_SAMPLE_RATE, 700, params.vad_thold, params.freq_thold, false)) {
+
+            //segment_iterator += 1;
+            //if (segment_iterator > 5)
+            //{
+            //    printf("itterator reached 10 sec\n");
+            //}
+            //if (!found_audio) found_audio = true;
+            
+        	//printf("found vad\n");
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             t_last = std::chrono::high_resolution_clock::now();
-            segment_iterator += 1;
-            if (segment_iterator > 5)
-            {
-                printf("itterator reached 10 sec\n");
-            }
-            audio.get(params.length_ms, pcmf32);
-            printf("found vad\n");
+            audio.get(t_diff, pcmf32);
         }
         else {
-            if (segment_iterator > 0)
-            {
-                printf("next iter\n");
-                std::cout << temp_text;
-                temp_text = "";
-            }
+
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            segment_iterator = 0;
+            //segment_iterator = 0;
+            //printf("process vad three\n");
             continue;
+            //if (segment_iterator > 0)
+            //{
+            //    printf("next iter\n");
+            //    std::cout << temp_text;
+            //    temp_text = "";
+            //}
         }
 
         // run the inference
@@ -509,7 +512,11 @@ int main() {
                 for (int i = 0; i < n_segments; ++i) {
                     const char * text = whisper_full_get_segment_text(ctx, i);
                     //printf("%s", text);
-                    //printf(text);
+                    if (strcmp(text, " [BLANK_AUDIO]"))
+                    {
+                        printf(text);
+                        std::cout << "\n";
+                    }
                     temp_text = text;
                     fflush(stdout);
 
