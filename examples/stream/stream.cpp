@@ -518,7 +518,6 @@ int main() {
                     if (strcmp(text, " [BLANK_AUDIO]"))
                     {
                         simulator.TypePhrase(text);
-                        std::cout << "\n";
                     }
                     temp_text = text;
                     fflush(stdout);
