@@ -6,7 +6,7 @@ find_package(SDL2 CONFIG REQUIRED)
 
 #set(Boost_INCLUDE_DIR "C:/dev/vcpkg/installed/x64-windows/include/boost")  
 #find_package(Boost CONFIG REQUIRED COMPONENTS circular_buffer)
-add_executable(${TARGET} "stream.cpp" "audio.h")
+add_executable(${TARGET} "stream.cpp" "audio.h" "KeySimulator.cpp" "KeySimulator.h")
 
 include(DefaultTargetOptions)
 

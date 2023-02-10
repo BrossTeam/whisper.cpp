@@ -20,6 +20,7 @@
 #include <map>
 #include <mutex>
 #include <queue>
+#include "KeySimulator.h"
 #undef main
 
 //  500 -> 00:05.000
@@ -276,6 +277,7 @@ void audio_async::get(int ms, std::vector<float> & result) {
 
         size_t n_samples = (m_sample_rate * ms) / 1000;
 
+        // TODO: error happens here fix needed vector too long
         result.resize(n_samples);
 
         if (n_samples > m_audio_buffer.size()) {
@@ -418,6 +420,7 @@ int main() {
     std::string temp_text = "";
     bool found_audio = false;
     //const auto t_start = t_last;
+    WindowsKeySimulator simulator;
 
     // main audio loop
     while (is_running) {
@@ -514,7 +517,7 @@ int main() {
                     //printf("%s", text);
                     if (strcmp(text, " [BLANK_AUDIO]"))
                     {
-                        printf(text);
+                        simulator.TypePhrase(text);
                         std::cout << "\n";
                     }
                     temp_text = text;
